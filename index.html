@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tracking Plan Builder</title>
+<style>:root{--bg:#f7f7f5;--panel:#fff;--ink:#1c1c1a;--muted:#6b6b66;--line:#e3e3de;--accent:#3d5afe;--accent-ink:#fff;--good:#1a7f4b;--bad:#b3261e;--warn:#9a6700;--soft:#eef0ff;--radius:10px;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--panel:#1d1d1b;--ink:#ececE6;--muted:#9a9a93;--line:#30302c;--accent:#8c9eff;--accent-ink:#11122b;--good:#5fd39a;--bad:#ff8a80;--warn:#e3b341;--soft:#23264a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1080px;margin:0 auto;padding:28px 16px 64px}
+header.top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+h1{font-size:24px;margin:0;letter-spacing:-.01em}
+h2{font-size:15px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+p.lead{margin:4px 0 0;color:var(--muted);max-width:62ch}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:16px}
+.grid{display:grid;gap:16px}
+@media(min-width:820px){.cols-2{grid-template-columns:1fr 1fr}.cols-3{grid-template-columns:repeat(3,1fr)}.side{grid-template-columns:340px 1fr}}
+label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+input,select,textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+textarea{min-height:120px;resize:vertical}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.field{margin-bottom:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button{font:inherit;font-weight:600;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 14px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.ghost{border-color:transparent;color:var(--muted);padding:4px 8px}
+button:disabled{opacity:.5;cursor:not-allowed}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+td input{padding:5px 7px}
+.scroll{overflow-x:auto}
+.stat{font-size:28px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stat small{display:block;font-size:12px;font-weight:500;color:var(--muted);letter-spacing:0}
+.muted{color:var(--muted)}.good{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;background:var(--soft);color:var(--accent)}
+.out{white-space:pre-wrap;word-wrap:break-word;font-size:14.5px;min-height:120px}
+.out.mono,code{font-family:var(--mono);font-size:13px}
+.note{font-size:13px;color:var(--muted)}
+footer{margin-top:28px;font-size:13px;color:var(--muted)}
+footer a{color:inherit}
+
+.event{border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:12px;background:var(--panel)}
+.event.invalid{border-color:var(--warn)}
+.props td,.props th{padding:4px 6px 4px 0;border:0}
+.hint{font-size:12.5px;margin-top:4px}
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <h1>Tracking Plan Builder</h1>
+      <p class="lead">Describe your analytics events once, keep the naming consistent, and export a plan your developers and analysts can share.</p>
+    </div>
+    <div class="row">
+      <button id="add" class="primary">Add event</button>
+      <button id="csv">Export CSV</button>
+      <button id="json">Export JSON</button>
+      <button id="importBtn">Import JSON</button>
+      <input id="file" type="file" accept="application/json" hidden>
+    </div>
+  </header>
+
+  <section class="panel">
+    <div class="grid cols-3">
+      <div><label for="convention">Naming convention</label>
+        <select id="convention">
+          <option value="snake">object_action (snake_case)</option>
+          <option value="title">Object Action (Title Case)</option>
+          <option value="camel">objectAction (camelCase)</option>
+        </select></div>
+      <div><label for="filter">Filter</label><input id="filter" type="search" placeholder="Search events"></div>
+      <div class="stat" id="count" style="font-size:20px;align-self:end">–<small>events · properties · naming issues</small></div>
+    </div>
+  </section>
+
+  <div id="list"></div>
+  <p id="empty" class="note" hidden>No event matches. Add one, or clear the filter.</p>
+  <footer>MIT license · © 2026 Adrien Balcioglu · Runs entirely in your browser.</footer>
+</main>
+<script>
+const KEY = 'tracking-plan-v1';
+const TYPES = ['string', 'number', 'boolean', 'timestamp', 'array', 'object'];
+const STATUS = ['planned', 'implemented', 'verified', 'deprecated'];
+const PATTERNS = {
+  snake: [/^[a-z][a-z0-9]*(_[a-z0-9]+)+$/, 'Use lowercase words joined by underscores, object first: signup_completed.'],
+  title: [/^[A-Z][a-z0-9]*( [A-Z][a-z0-9]*)+$/, 'Use capitalised words separated by spaces, object first: Signup Completed.'],
+  camel: [/^[a-z][a-z0-9]*([A-Z][a-z0-9]*)+$/, 'Use camelCase, object first: signupCompleted.'],
+};
+const SAMPLE = {
+  convention: 'snake',
+  events: [
+    { name: 'signup_completed', description: 'The user finished creating an account.', trigger: 'Account creation succeeds on the server.', owner: 'Growth', status: 'implemented',
+      props: [{ name: 'method', type: 'string', required: true, example: 'google' }, { name: 'referrer', type: 'string', required: false, example: 'newsletter' }] },
+    { name: 'project_created', description: 'The user created a project.', trigger: 'Click on "Create" in the new project form.', owner: 'Core', status: 'planned',
+      props: [{ name: 'template', type: 'string', required: false, example: 'blank' }] },
+  ],
+};
+const $ = (id) => document.getElementById(id);
+let state = load();
+function load() {
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && Array.isArray(s.events)) return s; } catch {}
+  return structuredClone(SAMPLE);
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} }
+const issue = (name) => (PATTERNS[state.convention][0].test(name) ? '' : PATTERNS[state.convention][1]);
+const dupes = () => { const seen = {}; state.events.forEach((e) => { seen[e.name] = (seen[e.name] || 0) + 1; }); return seen; };
+
+function el(tag, attrs = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'text') node.textContent = v; else if (k === 'value') node.value = v; else if (k === 'checked') node.checked = v; else node.setAttribute(k, v);
+  }
+  children.forEach((c) => node.appendChild(c));
+  return node;
+}
+const select = (options, value, data) => {
+  const s = el('select', data);
+  options.forEach((o) => s.appendChild(el('option', { value: o, text: o })));
+  s.value = value; return s;
+};
+const labelled = (label, control) => el('div', { class: 'field' }, [el('label', { text: label }), control]);
+
+function render() {
+  $('convention').value = state.convention;
+  const q = $('filter').value.trim().toLowerCase();
+  const counts = dupes();
+  const list = $('list'); list.innerHTML = '';
+  let issues = 0, shown = 0;
+  state.events.forEach((ev, i) => {
+    const problem = issue(ev.name) || (counts[ev.name] > 1 ? 'This name is used more than once.' : '');
+    if (problem) issues++;
+    if (q && !(`${ev.name} ${ev.description} ${ev.owner}`.toLowerCase().includes(q))) return;
+    shown++;
+    const d = { 'data-e': i };
+    const props = el('table', { class: 'props' }, [el('tbody', {}, ev.props.map((p, j) => {
+      const pd = { 'data-e': i, 'data-p': j };
+      return el('tr', {}, [
+        el('td', {}, [el('input', { ...pd, 'data-k': 'name', value: p.name, placeholder: 'property', 'aria-label': 'Property name' })]),
+        el('td', {}, [select(TYPES, p.type, { ...pd, 'data-k': 'type', 'aria-label': 'Property type' })]),
+        el('td', {}, [el('input', { ...pd, 'data-k': 'example', value: p.example || '', placeholder: 'example', 'aria-label': 'Example value' })]),
+        el('td', {}, [el('label', { style: 'display:flex;gap:6px;align-items:center;margin:0;white-space:nowrap' }, [el('input', { ...pd, 'data-k': 'required', type: 'checkbox', style: 'width:auto', checked: !!p.required }), document.createTextNode('required')])]),
+        el('td', {}, [el('button', { ...pd, 'data-act': 'delProp', class: 'ghost', text: '✕', 'aria-label': 'Delete property' })]),
+      ]);
+    }))]);
+    const card = el('section', { class: 'event' + (problem ? ' invalid' : '') }, [
+      el('div', { class: 'grid cols-3' }, [
+        el('div', {}, [labelled('Event name', el('input', { ...d, 'data-k': 'name', value: ev.name })), el('div', { class: 'hint warn', text: problem })]),
+        labelled('Owner', el('input', { ...d, 'data-k': 'owner', value: ev.owner || '' })),
+        labelled('Status', select(STATUS, ev.status, { ...d, 'data-k': 'status' })),
+      ]),
+      el('div', { class: 'grid cols-2' }, [
+        labelled('What it means', el('input', { ...d, 'data-k': 'description', value: ev.description || '' })),
+        labelled('When it fires', el('input', { ...d, 'data-k': 'trigger', value: ev.trigger || '' })),
+      ]),
+      el('label', { text: 'Properties' }), props,
+      el('div', { class: 'row', style: 'margin-top:8px' }, [
+        el('button', { ...d, 'data-act': 'addProp', text: 'Add property' }),
+        el('button', { ...d, 'data-act': 'dup', text: 'Duplicate' }),
+        el('button', { ...d, 'data-act': 'del', class: 'ghost', text: 'Delete event' }),
+      ]),
+    ]);
+    list.appendChild(card);
+  });
+  $('empty').hidden = shown > 0;
+  const nProps = state.events.reduce((n, e) => n + e.props.length, 0);
+  $('count').firstChild.textContent = `${state.events.length} · ${nProps} · ${issues}`;
+}
+
+$('list').addEventListener('change', (e) => {
+  const t = e.target; if (!t.dataset.k) return;
+  const ev = state.events[+t.dataset.e];
+  const target = t.dataset.p !== undefined ? ev.props[+t.dataset.p] : ev;
+  target[t.dataset.k] = t.type === 'checkbox' ? t.checked : t.value.trim();
+  save(); render();
+});
+$('list').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-act]'); if (!t) return;
+  const i = +t.dataset.e, ev = state.events[i];
+  if (t.dataset.act === 'addProp') ev.props.push({ name: '', type: 'string', required: false, example: '' });
+  if (t.dataset.act === 'delProp') ev.props.splice(+t.dataset.p, 1);
+  if (t.dataset.act === 'dup') state.events.splice(i + 1, 0, { ...structuredClone(ev), name: ev.name + '_copy' });
+  if (t.dataset.act === 'del' && confirm(`Delete "${ev.name}"?`)) state.events.splice(i, 1);
+  save(); render();
+});
+$('add').addEventListener('click', () => {
+  state.events.unshift({ name: '', description: '', trigger: '', owner: '', status: 'planned', props: [] });
+  $('filter').value = ''; save(); render();
+  document.querySelector('#list input')?.focus();
+});
+$('convention').addEventListener('change', (e) => { state.convention = e.target.value; save(); render(); });
+$('filter').addEventListener('input', render);
+
+function download(name, content, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click(); URL.revokeObjectURL(a.href);
+}
+$('json').addEventListener('click', () => download('tracking-plan.json', JSON.stringify(state, null, 2), 'application/json'));
+$('csv').addEventListener('click', () => {
+  const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const rows = [['Event', 'Description', 'Trigger', 'Owner', 'Status', 'Property', 'Type', 'Required', 'Example']];
+  state.events.forEach((e) => {
+    const base = [e.name, e.description, e.trigger, e.owner, e.status];
+    if (!e.props.length) rows.push([...base, '', '', '', '']);
+    e.props.forEach((p) => rows.push([...base, p.name, p.type, p.required ? 'yes' : 'no', p.example]));
+  });
+  download('tracking-plan.csv', rows.map((r) => r.map(q).join(',')).join('\n'), 'text/csv');
+});
+$('importBtn').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (!Array.isArray(data.events)) throw new Error('missing "events"');
+    state = {
+      convention: PATTERNS[data.convention] ? data.convention : 'snake',
+      events: data.events.map((ev) => ({
+        name: String(ev.name ?? ''), description: String(ev.description ?? ''), trigger: String(ev.trigger ?? ''), owner: String(ev.owner ?? ''),
+        status: STATUS.includes(ev.status) ? ev.status : 'planned',
+        props: (Array.isArray(ev.props) ? ev.props : []).map((p) => ({ name: String(p.name ?? ''), type: TYPES.includes(p.type) ? p.type : 'string', required: !!p.required, example: String(p.example ?? '') })),
+      })),
+    };
+    save(); render();
+  } catch (err) { alert('This file is not a tracking plan exported from this tool: ' + err.message); }
+  e.target.value = '';
+});
+render();
+</script>
+</body>
+</html>
