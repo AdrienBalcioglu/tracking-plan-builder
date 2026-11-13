@@ -1,6 +1,8 @@
 # Tracking Plan Builder
 
 Describe analytics events, enforce a naming convention and export the plan as CSV or JSON.
+**[Try it live](https://adrienbalcioglu.github.io/tracking-plan-builder/)**
+
 
 ## Features
 
